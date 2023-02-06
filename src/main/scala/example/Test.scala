@@ -1,10 +1,9 @@
 package example
 
 import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
-import cats.effect.kernel.{Outcome, Resource}
-import cats.effect.syntax.resource._
-import cats.effect.{ExitCode, IO, IOApp, ResourceIO}
+import cats.effect.{Clock, ExitCode, IO, IOApp, Resource}
 import cats.syntax.all._
+import com.evolutiongaming.catshelper.CatsHelper.OpsCatsHelper
 import com.evolutiongaming.catshelper.LogOf
 import com.evolutiongaming.kafka.flow._
 import com.evolutiongaming.kafka.flow.kafka.Consumer
@@ -98,15 +97,15 @@ object Test extends IOApp {
     // Generate and process `eventsPerSecond` events, sleep for the rest of the second if took less
     def go(topicFlow: TopicFlow[IO]): IO[Unit] = {
       for {
-        start   <- IO.realTimeInstant
+        start   <- Clock[IO].instantNow
         records = generateRecords
         _       <- topicFlow.apply(ConsumerRecords(records))
-        end     <- IO.realTimeInstant
+        end     <- Clock[IO].instantNow
         elapsed = end.toEpochMilli - start.toEpochMilli
         _ <- if (elapsed < 1000L) {
           IO.sleep(1000L.millis - elapsed.millis)
         } else IO.unit
-        _ <- IO.println(s"${Instant.now} - done")
+        _ <- IO.delay(println(s"${Instant.now} - done"))
       } yield ()
     }
 
@@ -129,12 +128,8 @@ object Test extends IOApp {
       topicFlow       <- TopicFlow.of(fakeConsumer, topicPartition.topic, partitionFlowOf)
       _               <- topicFlow.add(partitionsToAdd).toResource
       _               <- printStatsInBackround
-      outcome         <- go(topicFlow).foreverM.background
-      _ <- outcome.flatMap {
-        case Outcome.Succeeded(fa) => fa >> IO.println("Completed")
-        case Outcome.Errored(e)    => IO.println("Errored").as(e.printStackTrace())
-        case Outcome.Canceled()    => IO.println("Canceled")
-      }.toResource
+      outcomeIO       <- go(topicFlow).foreverM.background
+      _ <- outcomeIO.onError(err => IO.delay(err.printStackTrace())).toResource
     } yield ()
 
     program

@@ -1,8 +1,8 @@
 package example
-import cats.effect.implicits._
+
+import cats.Parallel
 import cats.syntax.all._
-import cats.effect.Resource
-import cats.effect.kernel.Async
+import cats.effect.{Async, Resource}
 import com.evolutiongaming.kafka.flow.PartitionFlow.PartitionKey
 
 import java.util.concurrent.ConcurrentHashMap
@@ -26,7 +26,7 @@ trait KeyStateCache[F[_]] {
 
 object KeyStateCache {
 
-  private final class Impl[F[_]: Async]() extends KeyStateCache[F] {
+  private final class Impl[F[_]: Async: Parallel]() extends KeyStateCache[F] {
 
     val entries = new ConcurrentHashMap[String, (PartitionKey[F], F[Unit])]()
 
@@ -70,7 +70,7 @@ object KeyStateCache {
     }
   }
 
-  def make[F[_]: Async]: Resource[F, KeyStateCache[F]] =
+  def make[F[_]: Async: Parallel]: Resource[F, KeyStateCache[F]] =
     Resource.make(
       Async[F].delay(new Impl[F])
     )(

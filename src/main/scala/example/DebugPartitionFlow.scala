@@ -2,6 +2,7 @@ package example
 
 import cats.data.NonEmptyList
 import cats.effect._
+import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 import cats.syntax.all._
 import com.evolutiongaming.catshelper.ClockHelper._
@@ -19,7 +20,7 @@ import java.time.Instant
 // This is almost 100% copypaste from kafka-flow
 object DebugPartitionFlow {
 
-  def of[F[_]: Async: Log](
+  def of[F[_]: Async: Clock: Log](
     topicPartition: TopicPartition,
     assignedAt: Offset,
     keyStateOf: KeyStateOf[F],
@@ -49,7 +50,7 @@ object DebugPartitionFlow {
     } yield flow
 
   // TODO: put most `Ref` variables into one state class?
-  def of[F[_]: Async: Log](
+  def of[F[_]: Async: Clock: Log](
                             topicPartition: TopicPartition,
                             keyStateOf: KeyStateOf[F],
                             committedOffset: Ref[F, Offset],
