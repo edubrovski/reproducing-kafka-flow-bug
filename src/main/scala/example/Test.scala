@@ -7,8 +7,6 @@ import com.evolutiongaming.catshelper.CatsHelper.OpsCatsHelper
 import com.evolutiongaming.catshelper.LogOf
 import com.evolutiongaming.kafka.flow._
 import com.evolutiongaming.kafka.flow.kafka.Consumer
-import com.evolutiongaming.kafka.flow.metrics.Metrics
-import com.evolutiongaming.kafka.flow.metrics.syntax._
 import com.evolutiongaming.kafka.flow.persistence.PersistenceOf
 import com.evolutiongaming.kafka.flow.registry.EntityRegistry
 import com.evolutiongaming.kafka.flow.timer.{TimerFlowOf, TimersOf, Timestamp}
@@ -35,22 +33,6 @@ object Test extends IOApp {
   val topicPartition = TopicPartition("topic", Partition.min)
   val offset         = new AtomicLong(1L)
   val keysInMemory   = new AtomicInteger(0)
-
-  val keysStateOfMetrics: Metrics[KeyStateOf[IO]] = new Metrics[KeyStateOf[IO]] {
-    override def withMetrics(delegate: KeyStateOf[IO]): KeyStateOf[IO] = new KeyStateOf[IO] {
-      override def apply(
-                          topicPartition: TopicPartition,
-                          key: String,
-                          createdAt: Timestamp,
-                          context: KeyContext[IO]
-                        ): Resource[IO, KeyState[IO, ConsRecord]] =
-        Resource
-          .make(IO.delay(keysInMemory.incrementAndGet()))(_ => IO.delay(keysInMemory.decrementAndGet()).void)
-          .flatMap(_ => delegate.apply(topicPartition, key, createdAt, context))
-
-      override def all(topicPartition: TopicPartition): sstream.Stream[IO, String] = delegate.all(topicPartition)
-    }
-  }
 
   val fakeConsumer = new Consumer[IO] {
     override def subscribe(topics: NonEmptySet[Topic], listener: RebalanceListener1[IO]): IO[Unit] = IO.unit
@@ -120,20 +102,37 @@ object Test extends IOApp {
       } yield ()
     }
 
-    val program: Resource[IO, Unit] = for {
-      implicit0(logOf: LogOf[IO]) <- LogOf.slf4j[IO].toResource
-      timersOf                    <- TimersOf.memory[IO, KafkaKey].toResource
-      keyStateOf = KeyStateOf
+    def keyStateFactory(timersFactory: TimersOf[IO, KafkaKey]): KeyStateOf[IO] = {
+      val underlying = KeyStateOf
         .lazyRecovery[IO, Long](
           applicationId = "applicationId",
           groupId       = "groupId",
-          timersOf      = timersOf,
+          timersOf      = timersFactory,
           persistenceOf = PersistenceOf.empty,
           timerFlowOf   = TimerFlowOf.persistPeriodically(30.seconds, 30.seconds),
           fold          = fold,
           registry      = EntityRegistry.empty
         )
-        .withMetrics(keysStateOfMetrics)
+
+      new KeyStateOf[IO] {
+        override def apply(
+          topicPartition: TopicPartition,
+          key: String,
+          createdAt: Timestamp,
+          context: KeyContext[IO]
+        ): Resource[IO, KeyState[IO, ConsRecord]] =
+          Resource
+            .make(IO.delay(keysInMemory.incrementAndGet()))(_ => IO.delay(keysInMemory.decrementAndGet()).void)
+            .flatMap(_ => underlying.apply(topicPartition, key, createdAt, context))
+
+        override def all(topicPartition: TopicPartition): sstream.Stream[IO, String] = underlying.all(topicPartition)
+      }
+    }
+
+    val program: Resource[IO, Unit] = for {
+      implicit0(logOf: LogOf[IO]) <- LogOf.slf4j[IO].toResource
+      timersOf                    <- TimersOf.memory[IO, KafkaKey].toResource
+      keyStateOf = keyStateFactory(timersOf)
       //partitionFlowOf = PartitionFlowOf.apply[IO](keyStateOf = keyStateOf)
       partitionFlowOf = DebugPartitionFlowOf.of[IO](keyStateOf = keyStateOf)
       topicFlow       <- TopicFlow.of(fakeConsumer, topicPartition.topic, partitionFlowOf)
