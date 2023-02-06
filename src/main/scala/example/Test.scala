@@ -21,9 +21,11 @@ import org.apache.commons.lang3.{RandomStringUtils, RandomUtils}
 import scodec.bits.ByteVector
 
 import java.time.Instant
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import scala.collection.immutable.SortedSet
 import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
 import scala.concurrent.duration._
 
 // Start with -XX:ActiveProcessorCount=2 to emulate 2 CPUs
@@ -67,11 +69,20 @@ object Test extends IOApp {
     val partitionsToAdd =
       NonEmptySet.fromSetUnsafe(SortedSet.from((0 until partitions).map(nr => (Partition.unsafe(nr), Offset.min))))
 
+    val blockingEC: ExecutionContextExecutorService =
+      ExecutionContext.fromExecutorService(
+        Executors.newCachedThreadPool((r: Runnable) => {
+          val t = new Thread(r)
+          t.setName(s"blocking-ec-${t.getName()}")
+          t
+        })
+      )
+
     val keysPool = Array.fill(uniqueKeys)(RandomStringUtils.randomAlphanumeric(10))
 
     val fold = FoldOption.of[IO, Long, ConsRecord] { (_, event) =>
       // Emulate some blocking I/O
-      IO.blocking(Thread.sleep(5L)).as(Some(event.offset.value))
+      contextShift.evalOn(blockingEC)(IO.delay(Thread.sleep(5L))).as(Some(event.offset.value))
     }
 
     // Take `eventsPerSecond` non-duplicate keys from the pool, generate events for them spread across `partitions`
@@ -138,6 +149,6 @@ object Test extends IOApp {
       .redeemWith(err => IO(err.printStackTrace()).as(ExitCode.Error), _ => IO.pure(ExitCode.Success))
   }
 
-  private def printStatsInBackround: ResourceIO[Unit] =
-    (IO.sleep(5.seconds) >> IO.println(s"Currently keys in memory: ${keysInMemory.get()}")).foreverM.background.void
+  private def printStatsInBackround: Resource[IO, Unit] =
+    (IO.sleep(5.seconds) >> IO.delay(println(s"Currently keys in memory: ${keysInMemory.get()}"))).foreverM.background.void
 }

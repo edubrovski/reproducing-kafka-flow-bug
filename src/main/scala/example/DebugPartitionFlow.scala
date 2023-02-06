@@ -1,9 +1,9 @@
 package example
 
+import cats.Parallel
 import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent.Ref
-import cats.effect.implicits._
 import cats.syntax.all._
 import com.evolutiongaming.catshelper.ClockHelper._
 import com.evolutiongaming.catshelper.Log
@@ -16,11 +16,10 @@ import com.evolutiongaming.skafka.{Offset, TopicPartition}
 
 import java.time.Instant
 
-// TODO: remove this after finding the root cause of MCDA-262
 // This is almost 100% copypaste from kafka-flow
 object DebugPartitionFlow {
 
-  def of[F[_]: Async: Clock: Log](
+  def of[F[_]: Async: Clock: Parallel: Log](
     topicPartition: TopicPartition,
     assignedAt: Offset,
     keyStateOf: KeyStateOf[F],
@@ -50,7 +49,7 @@ object DebugPartitionFlow {
     } yield flow
 
   // TODO: put most `Ref` variables into one state class?
-  def of[F[_]: Async: Clock: Log](
+  def of[F[_]: Async: Clock: Parallel: Log](
                             topicPartition: TopicPartition,
                             keyStateOf: KeyStateOf[F],
                             committedOffset: Ref[F, Offset],
