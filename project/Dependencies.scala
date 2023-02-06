@@ -5,7 +5,6 @@ object Dependencies {
   object KafkaFlow {
     private val version = "2.2.12"
     val core = "com.evolutiongaming" %% "kafka-flow" % version
-    val metrics = "com.evolutiongaming" %% "kafka-flow-metrics" % version
   }
 
   object ApacheCommons {

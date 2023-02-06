@@ -12,7 +12,6 @@ lazy val root = (project in file("."))
     name := "reproducing-kf-bug-ce-3",
     libraryDependencies ++= Seq(
       KafkaFlow.core,
-      KafkaFlow.metrics,
       ApacheCommons.lang3
     ),
     dependencyOverrides ++= Seq(
