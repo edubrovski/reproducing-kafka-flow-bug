@@ -46,8 +46,9 @@ object DebugTopicFlow {
   ): Resource[F, TopicFlow[F]] = {
 
     def commitPending(hint: String) = pendingCommits.clear.flatMap { offsets =>
-      def partitionOffsets = offsets map { case (topicPartition, offsetAndMetadata) =>
-        PartitionOffset(topicPartition.partition, offsetAndMetadata.offset)
+      def partitionOffsets = offsets map {
+        case (topicPartition, offsetAndMetadata) =>
+          PartitionOffset(topicPartition.partition, offsetAndMetadata.offset)
       } mkString (", ")
 
       offsets.toNem.traverse_ { offsets =>
@@ -69,12 +70,15 @@ object DebugTopicFlow {
           _ <- Log[F].debug(
             s"got ConsRecords: ${ConsumerRecords.summaryShow.show(records)}; cached partitions: ${partitions.keys}"
           )
-          _ <- partitions.toList parTraverse { case (partition, flow) =>
-            val topicPartition = TopicPartition(topic, partition)
-            val partitionRecords = records.values get topicPartition map (_.toList) getOrElse Nil
-            for {
-              _ <- flow(partitionRecords).onCancel(Concurrent[F].raiseError(new Exception("PartitionFlow.apply canceled")))
-            } yield ()
+          _ <- partitions.toList parTraverse {
+            case (partition, flow) =>
+              val topicPartition   = TopicPartition(topic, partition)
+              val partitionRecords = records.values get topicPartition map (_.toList) getOrElse Nil
+              for {
+                _ <- flow(partitionRecords).onCancel(
+                  Concurrent[F].raiseError(new Exception("PartitionFlow.apply canceled"))
+                )
+              } yield ()
           }
           _ <- Log[F].debug("done with partition flows")
           _ <- commitPending("records processing")
@@ -91,7 +95,7 @@ object DebugTopicFlow {
         // pendingCommits map is not updated on release of key/timer flows, it only persists the state
         // see https://github.com/evolution-gaming/kafka-flow/issues/256 for more details
         val topicPartitions = partitions map (TopicPartition(topic, _))
-        val removeOffsets = pendingCommits.remove(topicPartitions)
+        val removeOffsets   = pendingCommits.remove(topicPartitions)
 
         removePartitions *> removeOffsets *> {
           Log[F].info(s"removed offsets without commit for: $topicPartitions")
@@ -99,11 +103,12 @@ object DebugTopicFlow {
       }
 
       def add(partitions: NonEmptySet[(Partition, Offset)]): F[Unit] = {
-        partitions parTraverse_ { case (partition, offset) =>
-          val scheduleCommit = pendingCommits.newScheduleCommit(topic, partition)
-          cache.getOrUpdateResource(partition) {
-            partitionFlowOf(TopicPartition(topic, partition), offset, scheduleCommit)
-          }
+        partitions parTraverse_ {
+          case (partition, offset) =>
+            val scheduleCommit = pendingCommits.newScheduleCommit(topic, partition)
+            cache.getOrUpdateResource(partition) {
+              partitionFlowOf(TopicPartition(topic, partition), offset, scheduleCommit)
+            }
         }
       }
     }
@@ -140,9 +145,9 @@ object DebugTopicFlow {
     // coz it simply won't be executed, as execution chain would be cancelled
     val r =
       for {
-        closed <- Ref.of[F, Boolean](false)
-        semaphore <- Semaphore(1)
-        xx <- a.allocated
+        closed              <- Ref.of[F, Boolean](false)
+        semaphore           <- Semaphore(1)
+        xx                  <- a.allocated
         (topicFlow, release) = xx
         safeTopicFlow = new TopicFlow[F] {
           def apply(records: ConsRecords): F[Unit] =
