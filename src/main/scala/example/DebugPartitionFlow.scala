@@ -75,20 +75,21 @@ object DebugPartitionFlow {
     val init = for {
       clock           <- Clock[F].instant
       committedOffset <- committedOffset.get
-      timestamp       = Timestamp(clock, None, committedOffset)
-      keys            = keyStateOf.all(topicPartition)
+      timestamp        = Timestamp(clock, None, committedOffset)
+      keys             = keyStateOf.all(topicPartition)
       _               <- Log[F].info("partition recovery started")
-      count <- if (config.parallelRecovery) {
-        keys.toList flatMap { keys =>
-          keys.parFoldMapA { key =>
-            stateOf(timestamp, key) as 1
+      count <-
+        if (config.parallelRecovery) {
+          keys.toList flatMap { keys =>
+            keys.parFoldMapA { key =>
+              stateOf(timestamp, key) as 1
+            }
+          }
+        } else {
+          keys.foldM(0) { (count, key) =>
+            stateOf(timestamp, key) as (count + 1)
           }
         }
-      } else {
-        keys.foldM(0) { (count, key) =>
-          stateOf(timestamp, key) as (count + 1)
-        }
-      }
       _ <- Log[F].info(s"partition recovery finished, $count keys recovered")
     } yield ()
 
@@ -103,14 +104,14 @@ object DebugPartitionFlow {
           case (Some(key), records) => (key, records)
         }
         filteredRecords <- filter
-          .map(
-            filter =>
-              keys.toList.parTraverseFilter {
-                case (key, records) =>
-                  records.toList
-                    .filterA(filter.apply)
-                    .map(filtered => NonEmptyList.fromList(filtered).map(nel => (key, nel)))
-              }
+          .map(filter =>
+            keys.toList.parTraverseFilter {
+              case (key, records) =>
+                records
+                  .toList
+                  .filterA(filter.apply)
+                  .map(filtered => NonEmptyList.fromList(filtered).map(nel => (key, nel)))
+            }
           )
           .getOrElse(keys.toList.pure[F])
         _ <- filteredRecords.parTraverse_ {
@@ -132,7 +133,7 @@ object DebugPartitionFlow {
                 state.timers.onProcessed
             }
         }
-        lastRecord    = records.last
+        lastRecord     = records.last
         maximumOffset <- OffsetToCommit[F](lastRecord.offset)
         _ <- timestamp.set(
           Timestamp(
@@ -181,7 +182,7 @@ object DebugPartitionFlow {
         minimumOffset = stateOffsets.flatten.minimumOption
 
         // maximum offset to commit is the offset of last record
-        timestamp     <- timestamp.get
+        timestamp    <- timestamp.get
         maximumOffset = timestamp.offset
 
         allowedOffset = minimumOffset getOrElse maximumOffset
@@ -190,9 +191,10 @@ object DebugPartitionFlow {
         // i.e. if we dealt with all the states, and there is nothing holding
         // us from moving forward
         committedOffsetValue <- committedOffset.get
-        moveForward <- if (allowedOffset > committedOffsetValue) {
-          committedOffset.set(allowedOffset).as((allowedOffset.value - committedOffsetValue.value).some)
-        } else none[Long].pure[F]
+        moveForward <-
+          if (allowedOffset > committedOffsetValue) {
+            committedOffset.set(allowedOffset).as((allowedOffset.value - committedOffsetValue.value).some)
+          } else none[Long].pure[F]
         offsetToCommit <- moveForward traverse { moveForward =>
           Log[F].info(s"offset: $allowedOffset (+$moveForward)") as allowedOffset
         }

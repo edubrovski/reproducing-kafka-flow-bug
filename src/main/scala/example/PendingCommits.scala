@@ -15,8 +15,8 @@ trait PendingCommits[F[_]] {
   def remove(topicPartitions: NonEmptySet[TopicPartition]): F[Unit]
 
   /** Create a new instance of [[ScheduleCommit]] allowing individual partitions to request ("schedule") an offset
-   * to be committed during the next commit attempt
-   */
+    * to be committed during the next commit attempt
+    */
   def newScheduleCommit(topic: String, partition: Partition): ScheduleCommit[F]
 }
 
@@ -24,7 +24,7 @@ object PendingCommits {
 
   /** An in-memory implementation, using [[cats.effect.Ref]] as a storage */
   private final class FromRef[F[_]](pendingCommits: Ref[F, Map[TopicPartition, OffsetAndMetadata]])
-    extends PendingCommits[F] {
+      extends PendingCommits[F] {
 
     /** @inheritdoc */
     override def clear: F[Map[TopicPartition, OffsetAndMetadata]] =

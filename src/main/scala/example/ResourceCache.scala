@@ -8,10 +8,10 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters._
 
 /**
- * A fundamental assumption behind this cache is that no 2 threads will access the same key concurrently.
- * It's a reasonable assumption because kafka-flow applies events for one key in sequence, not in parallel,
- * and timers are triggered only after all events are processed.
- */
+  * A fundamental assumption behind this cache is that no 2 threads will access the same key concurrently.
+  * It's a reasonable assumption because kafka-flow applies events for one key in sequence, not in parallel,
+  * and timers are triggered only after all events are processed.
+  */
 trait ResourceCache[F[_], K, V] {
 
   def getOrUpdateResource(key: K)(value: => Resource[F, V]): F[V]
@@ -35,9 +35,10 @@ object ResourceCache {
       Async[F].defer {
         entries.get(key) match {
           case null =>
-            valueR.allocated.map { case (value, release) =>
-              entries.put(key, (value, release))
-              value
+            valueR.allocated.map {
+              case (value, release) =>
+                entries.put(key, (value, release))
+                value
             }
           case (value, _) =>
             value.pure[F]
@@ -56,16 +57,19 @@ object ResourceCache {
 
     override def values: F[Map[K, V]] =
       Async[F].delay {
-        entries.asScala.map {
-          case (k, (v, _)) =>
-            (k, v)
-        }.toMap
+        entries
+          .asScala
+          .map {
+            case (k, (v, _)) =>
+              (k, v)
+          }
+          .toMap
       }
 
     private def removeAndRelease(key: K): F[Unit] = {
       Async[F].defer {
         entries.remove(key) match {
-          case null => Async[F].unit
+          case null         => Async[F].unit
           case (_, release) => release
         }
       }

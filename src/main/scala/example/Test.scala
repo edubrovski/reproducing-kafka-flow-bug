@@ -63,15 +63,14 @@ object Test extends IOApp {
       while (keys.size < eventsPerSecond) {
         keys += keysPool(RandomUtils.nextInt(0, uniqueKeys))
       }
-      val set: mutable.Set[ConsumerRecord[Metadata, ByteVector]] = keys.map(
-        key =>
-          ConsumerRecord(
-            TopicPartition("topic", Partition.unsafe((key.hashCode % partitions).abs.toLong)),
-            Offset.unsafe(offset.incrementAndGet()),
-            Some(TimestampAndType(Instant.now, Create)),
-            key   = Some(WithSize(key)),
-            value = Some(WithSize(ByteVector.fromLong(1L)))
-          )
+      val set: mutable.Set[ConsumerRecord[Metadata, ByteVector]] = keys.map(key =>
+        ConsumerRecord(
+          TopicPartition("topic", Partition.unsafe((key.hashCode % partitions).abs.toLong)),
+          Offset.unsafe(offset.incrementAndGet()),
+          Some(TimestampAndType(Instant.now, Create)),
+          key   = Some(WithSize(key)),
+          value = Some(WithSize(ByteVector.fromLong(1L)))
+        )
       )
 
       set.groupBy(_.topicPartition).map { case (k, v) => k -> NonEmptyList.fromListUnsafe(v.toList) }
@@ -80,14 +79,15 @@ object Test extends IOApp {
     // Generate and process `eventsPerSecond` events, sleep for the rest of the second if took less
     def go(topicFlow: TopicFlow[IO]): IO[Unit] = {
       for {
-        start   <- IO.realTimeInstant
+        start  <- IO.realTimeInstant
         records = generateRecords
-        _       <- topicFlow.apply(ConsumerRecords(records))
-        end     <- IO.realTimeInstant
+        _      <- topicFlow.apply(ConsumerRecords(records))
+        end    <- IO.realTimeInstant
         elapsed = end.toEpochMilli - start.toEpochMilli
-        _ <- if (elapsed < 1000L) {
-          IO.sleep(1000L.millis - elapsed.millis)
-        } else IO.unit
+        _ <-
+          if (elapsed < 1000L) {
+            IO.sleep(1000L.millis - elapsed.millis)
+          } else IO.unit
         _ <- IO.println(s"${Instant.now} - done")
       } yield ()
     }
@@ -122,13 +122,13 @@ object Test extends IOApp {
     val program: Resource[IO, Unit] = for {
       implicit0(logOf: LogOf[IO]) <- LogOf.slf4j[IO].toResource
       timersOf                    <- TimersOf.memory[IO, KafkaKey].toResource
-      keyStateOf = keyStateFactory(timersOf)
+      keyStateOf                   = keyStateFactory(timersOf)
       //partitionFlowOf = PartitionFlowOf.apply[IO](keyStateOf = keyStateOf)
       partitionFlowOf = DebugPartitionFlowOf.of[IO](keyStateOf = keyStateOf)
-      topicFlow       <- DebugTopicFlow.of(fakeConsumer, topicPartition.topic, partitionFlowOf)
-      _               <- topicFlow.add(partitionsToAdd).toResource
-      _               <- printStatsInBackround
-      outcome         <- go(topicFlow).foreverM.background
+      topicFlow      <- DebugTopicFlow.of(fakeConsumer, topicPartition.topic, partitionFlowOf)
+      _              <- topicFlow.add(partitionsToAdd).toResource
+      _              <- printStatsInBackround
+      outcome        <- go(topicFlow).foreverM.background
       _ <- outcome.flatMap {
         case Outcome.Succeeded(fa) => fa >> IO.println("Completed")
         case Outcome.Errored(e)    => IO.println("Errored").as(e.printStackTrace())

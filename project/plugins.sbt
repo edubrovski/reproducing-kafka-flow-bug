@@ -7,3 +7,5 @@ externalResolvers := Seq(
 )
 
 addSbtPlugin("com.evolution" % "sbt-artifactory-plugin" % "0.0.2")
+
+addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.2.1")
