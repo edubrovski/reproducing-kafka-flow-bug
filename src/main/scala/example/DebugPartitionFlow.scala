@@ -15,7 +15,6 @@ import com.evolutiongaming.skafka.{Offset, TopicPartition}
 
 import java.time.Instant
 
-// TODO: remove this after finding the root cause of MCDA-262
 // This is almost 100% copypaste from kafka-flow
 object DebugPartitionFlow {
 
@@ -23,7 +22,7 @@ object DebugPartitionFlow {
     topicPartition: TopicPartition,
     assignedAt: Offset,
     keyStateOf: KeyStateOf[F],
-    cache: KeyStateCache[F],
+    cache: ResourceCache[F, String, PartitionKey[F]],
     config: PartitionFlowConfig,
     filter: Option[FilterRecord[F]] = None,
     scheduleCommit: ScheduleCommit[F]
@@ -50,17 +49,17 @@ object DebugPartitionFlow {
 
   // TODO: put most `Ref` variables into one state class?
   def of[F[_]: Async: Log](
-                            topicPartition: TopicPartition,
-                            keyStateOf: KeyStateOf[F],
-                            committedOffset: Ref[F, Offset],
-                            timestamp: Ref[F, Timestamp],
-                            triggerTimersAt: Ref[F, Instant],
-                            commitOffsetsAt: Ref[F, Instant],
-                            cache: KeyStateCache[F],
-                            config: PartitionFlowConfig,
-                            filter: Option[FilterRecord[F]],
-                            scheduleCommit: ScheduleCommit[F]
-                          ): Resource[F, PartitionFlow[F]] = {
+    topicPartition: TopicPartition,
+    keyStateOf: KeyStateOf[F],
+    committedOffset: Ref[F, Offset],
+    timestamp: Ref[F, Timestamp],
+    triggerTimersAt: Ref[F, Instant],
+    commitOffsetsAt: Ref[F, Instant],
+    cache: ResourceCache[F, String, PartitionKey[F]],
+    config: PartitionFlowConfig,
+    filter: Option[FilterRecord[F]],
+    scheduleCommit: ScheduleCommit[F]
+  ): Resource[F, PartitionFlow[F]] = {
 
     def stateOf(createdAt: Timestamp, key: String): F[PartitionKey[F]] =
       cache.getOrUpdateResource(key) {
