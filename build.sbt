@@ -16,6 +16,9 @@ lazy val root = (project in file("."))
     ),
     dependencyOverrides ++= Seq(
       Overrides.scalaJava8Compat
+    ),
+    excludeDependencies ++= Seq(
+      ExclusionRule(organization = "com.evolutiongaming", name = "scache")
     )
   )
 

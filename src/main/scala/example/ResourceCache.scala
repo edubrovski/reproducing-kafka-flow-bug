@@ -1,8 +1,9 @@
 package example
-
 import cats.Parallel
+import cats.effect.implicits._
 import cats.syntax.all._
-import cats.effect.{Async, Resource}
+import cats.effect.Resource
+import cats.effect.Async
 import com.evolutiongaming.kafka.flow.PartitionFlow.PartitionKey
 
 import java.util.concurrent.ConcurrentHashMap
@@ -13,26 +14,26 @@ import scala.jdk.CollectionConverters._
  * It's a reasonable assumption because kafka-flow applies events for one key in sequence, not in parallel,
  * and timers are triggered only after all events are processed.
  */
-trait KeyStateCache[F[_]] {
+trait ResourceCache[F[_], K, V] {
 
-  def getOrUpdateResource(key: String)(value: => Resource[F, PartitionKey[F]]): F[PartitionKey[F]]
+  def getOrUpdateResource(key: K)(value: => Resource[F, V]): F[V]
 
-  def remove(key: String): F[Unit]
+  def remove(key: K): F[Unit]
 
-  def values: F[Map[String, PartitionKey[F]]]
+  def keys: F[Set[K]]
+
+  def values: F[Map[K, V]]
 
   def clear: F[Unit]
 }
 
-object KeyStateCache {
+object ResourceCache {
 
-  private final class Impl[F[_]: Async: Parallel]() extends KeyStateCache[F] {
+  private final class Impl[F[_]: Async: Parallel, K, V]() extends ResourceCache[F, K, V] {
 
-    val entries = new ConcurrentHashMap[String, (PartitionKey[F], F[Unit])]()
+    val entries = new ConcurrentHashMap[K, (V, F[Unit])]()
 
-    type V = PartitionKey[F]
-
-    override def getOrUpdateResource(key: String)(valueR: => Resource[F, V]): F[V] =
+    override def getOrUpdateResource(key: K)(valueR: => Resource[F, V]): F[V] =
       Async[F].defer {
         entries.get(key) match {
           case null =>
@@ -45,14 +46,17 @@ object KeyStateCache {
         }
       }
 
-    override def remove(key: String): F[Unit] = removeAndRelease(key)
+    override def remove(key: K): F[Unit] = removeAndRelease(key)
 
     override def clear: F[Unit] =
       Async[F].defer {
         entries.keys.asScala.toVector.parTraverse_(removeAndRelease)
       }
 
-    override def values: F[Map[String, PartitionKey[F]]] =
+    override def keys: F[Set[K]] =
+      Async[F].delay(entries.keys.asScala.toSet)
+
+    override def values: F[Map[K, V]] =
       Async[F].delay {
         entries.asScala.map {
           case (k, (v, _)) =>
@@ -60,7 +64,7 @@ object KeyStateCache {
         }.toMap
       }
 
-    private def removeAndRelease(key: String): F[Unit] = {
+    private def removeAndRelease(key: K): F[Unit] = {
       Async[F].defer {
         entries.remove(key) match {
           case null => Async[F].unit
@@ -70,9 +74,9 @@ object KeyStateCache {
     }
   }
 
-  def make[F[_]: Async: Parallel]: Resource[F, KeyStateCache[F]] =
+  def make[F[_]: Async: Parallel, K, V]: Resource[F, ResourceCache[F, K, V]] =
     Resource.make(
-      Async[F].delay(new Impl[F])
+      Async[F].delay(new Impl[F, K, V])
     )(
       _.clear
     )

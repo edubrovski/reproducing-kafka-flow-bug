@@ -43,10 +43,10 @@ object Test extends IOApp {
   override def run(args: List[String]): IO[ExitCode] = {
     // Tune these two parameters to emulate real conditions and bring the application to 100% of CPU load (but not much over that)
     // `uniqueKeys` affects how many fibers are started each second when timers are triggered for all entries in cache
-    val uniqueKeys = 65000 //200000 w/o full caching // 65000
+    val uniqueKeys = 100000 //200000 w/o full caching // 65000
     // `eventsPerSecond` - a number of events to process, doesn't seem to matter as much as `uniqueKeys` but needs
     // to be high enough to populate the cache in a reasonable amount of time and at the same not to overload CPUs
-    val eventsPerSecond = 4000 // 15000 w/o full caching
+    val eventsPerSecond = 5000 // 15000 w/o full caching
     val partitions      = 5
     val partitionsToAdd =
       NonEmptySet.fromSetUnsafe(SortedSet.from((0 until partitions).map(nr => (Partition.unsafe(nr), Offset.min))))
@@ -135,7 +135,7 @@ object Test extends IOApp {
       keyStateOf = keyStateFactory(timersOf)
       //partitionFlowOf = PartitionFlowOf.apply[IO](keyStateOf = keyStateOf)
       partitionFlowOf = DebugPartitionFlowOf.of[IO](keyStateOf = keyStateOf)
-      topicFlow       <- TopicFlow.of(fakeConsumer, topicPartition.topic, partitionFlowOf)
+      topicFlow       <- DebugTopicFlow.of(fakeConsumer, topicPartition.topic, partitionFlowOf)
       _               <- topicFlow.add(partitionsToAdd).toResource
       _               <- printStatsInBackround
       outcomeIO       <- go(topicFlow).foreverM.background
